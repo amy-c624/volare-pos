@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VOLARE 智慧雲端安全營運系統 v74</title>
+    <title>VOLARE 智慧雲端安全營運系統 v76</title>
     <style>
         :root {
             --primary-color: #2c3e50;
@@ -269,6 +269,33 @@
         .status-syncing { background-color: var(--warning-color); animation: pulse 1s infinite; }
         .status-success { background-color: var(--success-color); }
         .status-fail { background-color: var(--accent-color); }
+        #pendingSyncBanner {
+            display: none;
+            background: #b91c1c;
+            color: #fff;
+            padding: 14px 20px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 10px rgba(185,28,28,0.35);
+            animation: bannerPulse 1.6s infinite;
+        }
+        #pendingSyncBanner .psb-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        #pendingSyncBanner .psb-title { font-size: 15px; font-weight: bold; }
+        #pendingSyncBanner .psb-dates { font-size: 12px; color: #fecaca; margin-top: 4px; }
+        #pendingSyncBanner .psb-hint { font-size: 12px; color: #fee2e2; margin-top: 6px; }
+        #pendingSyncBanner button {
+            width: auto; padding: 8px 16px; font-size: 13px; font-weight:bold; cursor: pointer; border-radius: 5px;
+        }
+        @keyframes bannerPulse {
+            0%, 100% { box-shadow: 0 4px 10px rgba(185,28,28,0.35); }
+            50% { box-shadow: 0 4px 18px rgba(185,28,28,0.75); }
+        }
         .modal {
             display: none;
             position: fixed;
@@ -613,6 +640,19 @@
                         <button onclick="executeClearBeforeDate()" class="btn-accent" style="flex:1; padding:10px; font-size:13px;">🗑️ 清除此日期之前的所有紀錄</button>
                     </div>
                     <hr style="margin:16px 0; border-color:#fca5a5;">
+                    <h4 style="color:#b91c1c; margin:0 0 8px 0;">🧾 整天覆蓋匯入（異常裝置資料復原專用）</h4>
+                    <p style="font-size:12px; color:#7f1d1d; margin:0 0 12px 0;">
+                        用途：某台裝置網路異常、資料一直卡在本機無法同步時，先請該裝置用「🧾 匯出當日原始資料」把卡住的資料匯出，
+                        <strong>人工核對整理成當天正確、不重複的完整版本</strong>後，再用這裡把該日期的雲端資料【整批作廢並改成匯入的這份】。
+                        原本卡住的裝置之後連上網路，會自動放棄自己本機那份舊資料，改抓這份匯入的正確版本，不會再重複。
+                        <br><strong style="color:#991b1b;">⚠️ 這是覆蓋性操作，匯入前請務必先確認這份檔案已包含當天所有真實交易，不會有漏算。</strong>
+                    </p>
+                    <div class="form-row" style="align-items:center;">
+                        <input type="date" id="overrideImportDateInput" style="flex:1;">
+                        <input type="file" id="overrideImportFileInput" accept="application/json" style="flex:2; background:#fff; border-radius:4px; padding:6px;">
+                    </div>
+                    <button onclick="executeDayOverrideImport()" class="btn-accent" style="padding:10px; width:auto; font-size:13px; margin-top:10px;">🚨 執行整天覆蓋匯入</button>
+                    <hr style="margin:16px 0; border-color:#fca5a5;">
                     <h4 style="color:#b91c1c; margin:0 0 8px 0;">🔐 歷史紀錄編輯授權管理</h4>
                     <p style="font-size:12px; color:#7f1d1d; margin:0 0 12px 0;">僅授權清單內的帳號可以修改「非當日」的票券/商品歷史紀錄。當天與未來日期的紀錄修改不受此限制，所有後台帳號皆可操作。</p>
                     <div class="form-row" style="align-items:center;">
@@ -651,6 +691,20 @@
         <button onclick="openBackendModal()" style="background:#7f8c8d; width:auto; padding:8px 15px; font-size:13px; border-radius:4px;">⚙️ 後台設定</button>
         <button onclick="openChangeMyPasswordModal()" style="background:#34495e; width:auto; padding:8px 15px; font-size:13px; border-radius:4px;">🔑 修改我的密碼</button>
     </header>
+
+    <div id="pendingSyncBanner">
+        <div class="psb-row">
+            <div>
+                <div class="psb-title">⚠️ 有 <span id="psbCount">0</span> 個日期的資料尚未成功同步到雲端，其他電腦暫時看不到這些資料！</div>
+                <div class="psb-dates" id="psbDates"></div>
+                <div class="psb-hint">請勿在其他電腦手動補打同一天的資料，以免造成資料重複。請先確認網路連線正常後再重試。</div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button onclick="retryPendingSync()" style="background:var(--success-color); color:#fff;">🔄 立即重試同步</button>
+                <button onclick="exportRawDayData()" style="background:#fff; color:#b91c1c;">🧾 匯出待同步原始資料</button>
+            </div>
+        </div>
+    </div>
 
     <div class="summary-boxes">
         <div class="box">
@@ -732,6 +786,7 @@
                         <button onclick="triggerRangeQuery()" style="background:var(--primary-color); width:90px; padding:6px; font-size:13px;">確定查詢</button>
                     </div>
                     <button onclick="exportRangeData()" style="background:var(--success-color); width:auto; padding:8px 18px; font-size:13px;">📥 匯出 Excel</button>
+                    <button onclick="exportSingleDayRawJson(getActiveDate())" style="background:#5a6577; width:auto; padding:8px 18px; font-size:13px;" title="匯出目前選擇日期的完整原始資料，供異常復原/整天覆蓋匯入使用">🧾 匯出當日原始資料(復原用)</button>
                 </div>
 
                 <div id="viewDayZone">
@@ -789,6 +844,9 @@
 const CLOUD_DB_URL = "https://script.google.com/macros/s/AKfycbxQ6ftQdBt7kBiVNx9U-zRXiDG8i1FVn4gSnvYpdDD0GUjDAvh5892Sn43yJC3jMZBS/exec";
 
 let isSyncing = false; 
+// 🎯 v75 新增：待同步日期清單。任何一天推送雲端失敗，就會記錄在這裡，直到成功同步才移除。
+// 用來驅動畫面上的醒目警示橫幅，並讓「立即重試同步」與「網路恢復自動重試」知道要補送哪幾天。
+let pendingSyncDates = JSON.parse(localStorage.getItem('volare_pending_sync_dates')) || {};
 let adminLogs = JSON.parse(localStorage.getItem('volare_admin_logs')) || [];
 let programList = JSON.parse(localStorage.getItem('volare_programs_v13')) || ["長安之上主題影片", "玩具星球", "勇闖侏儸紀", "地球保衛戰"];
 let confirmCallback = null;
@@ -853,6 +911,8 @@ rangeQueryStart = todayStr; rangeQueryEnd = todayStr;
 
 systemStorage = JSON.parse(localStorage.getItem('volare_pos_data_v13')) || {};
 initStaticDropdowns();
+document.addEventListener('DOMContentLoaded', function() { renderPendingSyncBanner(); });
+if (document.readyState !== 'loading') { renderPendingSyncBanner(); }
 
 document.getElementById('gatePass').addEventListener('keypress', function(e) { if(e.key === 'Enter') preLoginSyncAndAttempt(); });
 document.getElementById('gateUser').addEventListener('keypress', function(e) { if(e.key === 'Enter') preLoginSyncAndAttempt(); });
@@ -953,6 +1013,7 @@ function executeActualLoginLogic() {
     if (initialLoginDatabase[u] && initialLoginDatabase[u] === p) {
         errDiv.style.display = 'none'; document.getElementById('loginGatekeeperOverlay').style.display = 'none';
         currentOperatorName = u; initStaticDropdowns(); switchForm('Ticket'); loadDateData(); updateInputLockUI(); pullFromCloud(true); 
+        renderPendingSyncBanner();
         showMsg('【提醒】', `🔓 歡迎登入！\n解鎖帳號：${u}`);
     } else { toggleLoginButtonState(false, "登入解鎖系統"); errDiv.innerText = "❌ 登入帳號或密碼不正確，請重新輸入！"; errDiv.style.display = 'block'; }
 }
@@ -1003,12 +1064,13 @@ function pullFromCloud(forceSync = false) {
     }).catch(err => { setSyncIndicator('fail'); loadDateData(); });
 }
 
-// 🎯 新架構：只推送「目前操作中的那一天」，避免每次都上傳整包歷史資料造成單一儲存格爆量。
+// 🎯 新架構：只推送「指定的那一天」（預設為目前操作中的日期），避免每次都上傳整包歷史資料造成單一儲存格爆量。
 // 推送前先向雲端拉一次該天最新版本做合併，避免多台裝置同時新增資料時互相覆蓋。
-function pushToCloud() {
+// 🎯 v75：改為可指定日期（供待同步佇列重試/覆蓋匯入使用），並回傳 Promise 讓呼叫端知道這次是成功還是失敗。
+function pushToCloud(dateOverride) {
     isSyncing = true; setSyncIndicator('syncing');
     let syncTimeout = setTimeout(() => { isSyncing = false; }, 20000);
-    let activeDate = getActiveDate();
+    let activeDate = dateOverride || getActiveDate();
 
     // 🎯 在合併雲端資料前，先快照本機目前的設定值。合併後若雲端版本覆蓋了任何本機既有的key，
     // 一律以「使用者剛剛在這台裝置上做的操作」為準強制還原，避免使用者的修改被舊的雲端資料蓋掉。
@@ -1021,7 +1083,7 @@ function pushToCloud() {
         currentPriceMode: currentPriceMode
     };
 
-    fetch(CLOUD_DB_URL).then(res => res.json()).then(resData => {
+    return fetch(CLOUD_DB_URL).then(res => res.json()).then(resData => {
         if (resData && resData.sales && resData.sales[activeDate]) {
             mergeSingleDay(activeDate, resData.sales[activeDate]);
         }
@@ -1029,10 +1091,10 @@ function pushToCloud() {
             unpackCloudConfig(resData.config); // 合併雲端的墓碑清單與其他裝置可能新增的項目
             restoreLocalSnapshotValues(localSnapshot); // 還原本機剛做的修改，確保使用者操作優先於合併結果
         }
-        sendPushPayload(activeDate, syncTimeout);
+        return sendPushPayload(activeDate, syncTimeout);
     }).catch(err => {
         // 拉取失敗也要繼續嘗試推送，避免完全卡住無法寫入
-        sendPushPayload(activeDate, syncTimeout);
+        return sendPushPayload(activeDate, syncTimeout);
     });
 }
 
@@ -1051,9 +1113,57 @@ function sendPushPayload(activeDate, syncTimeout) {
     let salesForThisDay = {};
     if (systemStorage[activeDate]) salesForThisDay[activeDate] = systemStorage[activeDate];
     let payload = { action: "write", data: { sales: salesForThisDay, config: { initialLoginDatabase: initialLoginDatabase, staffDatabase: staffDatabase, ticketTypeDatabase: ticketTypeDatabase, goodsDatabase: goodsDatabase, vendorDatabase: vendorDatabase, programList: programList, deletedTicketKeys: deletedTicketKeys, deletedGoodsKeys: deletedGoodsKeys, deletedVendorKeys: deletedVendorKeys, deletedStaffKeys: deletedStaffKeys, historyEditAuthorizedStaff: historyEditAuthorizedStaff, currentPriceMode: currentPriceMode } } };
-    fetch(CLOUD_DB_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) })
-    .then(res => res.json()).then(resData => { clearTimeout(syncTimeout); isSyncing = false; if(resData && resData.status === "success") setSyncIndicator('success'); else setSyncIndicator('fail'); })
-    .catch(err => { clearTimeout(syncTimeout); isSyncing = false; setSyncIndicator('fail'); });
+    return fetch(CLOUD_DB_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) })
+    .then(res => res.json()).then(resData => {
+        clearTimeout(syncTimeout); isSyncing = false;
+        if(resData && resData.status === "success") { setSyncIndicator('success'); clearDatePending(activeDate); return true; }
+        else { setSyncIndicator('fail'); markDatePending(activeDate); return false; }
+    })
+    .catch(err => { clearTimeout(syncTimeout); isSyncing = false; setSyncIndicator('fail'); markDatePending(activeDate); return false; });
+}
+
+// ===== v75 新增：待同步日期佇列管理 + 醒目警示橫幅 =====
+function markDatePending(date) {
+    if (!date) return;
+    if (!pendingSyncDates[date]) { pendingSyncDates[date] = Date.now(); }
+    localStorage.setItem('volare_pending_sync_dates', JSON.stringify(pendingSyncDates));
+    renderPendingSyncBanner();
+}
+function clearDatePending(date) {
+    if (!date) return;
+    if (pendingSyncDates[date]) {
+        delete pendingSyncDates[date];
+        localStorage.setItem('volare_pending_sync_dates', JSON.stringify(pendingSyncDates));
+        renderPendingSyncBanner();
+    }
+}
+function renderPendingSyncBanner() {
+    let banner = document.getElementById('pendingSyncBanner');
+    if (!banner) return;
+    let dates = Object.keys(pendingSyncDates).sort();
+    if (dates.length === 0) { banner.style.display = 'none'; return; }
+    banner.style.display = 'block';
+    document.getElementById('psbCount').innerText = dates.length;
+    document.getElementById('psbDates').innerText = '尚未同步日期：' + dates.join('、');
+}
+// 網路恢復事件（不是每隔幾秒硬打API，只有瀏覽器偵測到網路真的恢復連線時才會觸發一次）
+window.addEventListener('online', function() {
+    if (Object.keys(pendingSyncDates).length > 0) { retryPendingSync(); }
+});
+// 手動「立即重試同步」：依序（非同時）補送每個待同步日期，避免多筆請求互相搶佔造成新的合併問題
+async function retryPendingSync() {
+    let dates = Object.keys(pendingSyncDates);
+    if (dates.length === 0) { showMsg('【提醒】', '目前沒有待同步的資料。'); return; }
+    showMsg('【提醒】', `⏳ 正在重試同步 ${dates.length} 個日期，請稍候...`);
+    for (let d of dates) {
+        await pushToCloud(d);
+    }
+    loadDateData();
+    if (Object.keys(pendingSyncDates).length === 0) {
+        showMsg('【提醒】', '✅ 所有待同步資料皆已成功上傳雲端！');
+    } else {
+        showMsg('【提醒】', `⚠️ 仍有 ${Object.keys(pendingSyncDates).length} 個日期同步失敗，請確認網路連線後再試一次。`);
+    }
 }
 
 // 合併單一天的雲端資料與本機資料（用於推送前的安全合併，邏輯與 smartMergeSales 相同但只處理一天）
@@ -1848,6 +1958,82 @@ function canEditDate(dateStr) {
     return historyEditAuthorizedStaff[currentOperatorName] === true;
 }
 
+// 🎯 v75 新增：匯出「單日完整原始資料」JSON（含每一筆的 id / timestamp / lastModified / 審計紀錄等所有欄位），
+// 跟下面的 exportRangeData()（給人看的彙總報表）用途完全不同——這份是設計給「網路異常裝置」拿去讓 amy 之後做
+// 「整天覆蓋匯入」用的，欄位不完整就沒辦法精準重建，所以務必保留原始結構，不能只做成報表格式。
+function exportSingleDayRawJson(date) {
+    if (!systemStorage[date]) { showMsg('【提醒】', `找不到 ${date} 的本機資料。`); return; }
+    let payload = {
+        type: "VOLARE_DAY_RAW_EXPORT",
+        version: 1,
+        date: date,
+        exportedAt: Date.now(),
+        exportedBy: currentOperatorName || "未知操作員",
+        tickets: systemStorage[date].tickets || [],
+        goods: systemStorage[date].goods || [],
+        deletedRecordIds: systemStorage[date].deletedRecordIds || []
+    };
+    let blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
+    let link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", `VOLARE_原始資料復原用_${date}.json`);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+}
+// 待同步橫幅上的「匯出待同步原始資料」按鈕：若有多個待同步日期，逐一匯出（瀏覽器會依序下載多個檔案）
+function exportRawDayData() {
+    let dates = Object.keys(pendingSyncDates);
+    if (dates.length === 0) { exportSingleDayRawJson(getActiveDate()); return; }
+    dates.forEach(d => exportSingleDayRawJson(d));
+}
+
+// 🎯 v75 新增：整天覆蓋匯入（限 amy_chung）。讀取由 exportSingleDayRawJson() 匯出、經人工核對整理過的原始資料檔，
+// 把雲端該日期資料整批標記作廢（沿用「清除當日資料」的 clearedAt 機制）後，改成匯入的這份資料，
+// 讓卡在其他裝置本機的舊資料之後連線時會自動放棄、改抓這份正確版本，徹底避免重複合併的問題。
+function executeDayOverrideImport() {
+    if (currentOperatorName !== 'amy_chung@brogentglobal.com') { showMsg('【提醒】', "🔒 此功能僅限最高權限主管操作！"); return; }
+    let date = document.getElementById('overrideImportDateInput').value;
+    let fileInput = document.getElementById('overrideImportFileInput');
+    if (!date) { showMsg('【提醒】', "請先選擇要覆蓋的日期！"); return; }
+    if (!fileInput.files || fileInput.files.length === 0) { showMsg('【提醒】', "請先選擇要匯入的原始資料 JSON 檔！"); return; }
+
+    let reader = new FileReader();
+    reader.onload = function(e) {
+        let parsed;
+        try { parsed = JSON.parse(e.target.result); } catch (err) { showMsg('【提醒】', "❌ 檔案格式錯誤，無法解析 JSON。"); return; }
+        if (!parsed || parsed.type !== "VOLARE_DAY_RAW_EXPORT") { showMsg('【提醒】', "❌ 這不是有效的 VOLARE 原始資料匯出檔。"); return; }
+        if (parsed.date && parsed.date !== date) {
+            showMsg('【提醒】', `⚠️ 注意：檔案內記錄的日期是 ${parsed.date}，但您選擇要覆蓋的日期是 ${date}，兩者不一致。<br>請確認選對日期後再匯入。`);
+            return;
+        }
+        let ticketCount = (parsed.tickets || []).length;
+        let goodsCount = (parsed.goods || []).length;
+        let confirmHtml = `🚨 【整天覆蓋匯入二次確認】<br>即將把雲端 <strong>${date}</strong> 現有的所有交易紀錄整批作廢，改成匯入檔案中的：<br>
+            🎫 票券 ${ticketCount} 筆　🛍️ 周邊 ${goodsCount} 筆<br><br>
+            <strong style="color:#991b1b;">此動作無法復原，請確認這份檔案已經是人工核對過、包含當天所有真實交易的完整正確版本。</strong>`;
+        showMsg('【危險操作二次確認】', confirmHtml, true, function(approved) {
+            if (!approved) return;
+            initDateKey(date);
+            systemStorage[date] = {
+                tickets: parsed.tickets || [],
+                goods: parsed.goods || [],
+                clearedAt: Date.now(),
+                deletedRecordIds: []
+            };
+            pushLog(`最高管理者執行整天覆蓋匯入：${date}（票券${ticketCount}筆／周邊${goodsCount}筆，來源匯出者：${parsed.exportedBy || '未知'}）`);
+            localStorage.setItem('volare_pos_data_v13', JSON.stringify(systemStorage));
+            loadDateData();
+            pushToCloud(date).then(success => {
+                if (success) {
+                    showMsg('【提醒】', `✅ ${date} 已成功覆蓋為匯入的正確版本，並同步到雲端！`);
+                } else {
+                    showMsg('【提醒】', `⚠️ 資料已在本機覆蓋完成，但推送雲端失敗，請稍後用「立即重試同步」補送。`);
+                }
+                fileInput.value = '';
+            });
+        });
+    };
+    reader.readAsText(fileInput.files[0]);
+}
+
 function exportRangeData() {
     let start = document.getElementById('expStart').value; let end = document.getElementById('expEnd').value;
     if(!start || !end || start > end) { showMsg('【提醒】', "請選取正確的日期導出區間！"); return; }
@@ -1861,10 +2047,10 @@ function exportRangeData() {
     allDates.forEach(d => { if(d >= start && d <= end && systemStorage[d] && systemStorage[d].goods) { systemStorage[d].goods.forEach(g => { let subtotal = g.qty < 0 ? Math.round(g.price * Math.abs(g.qty) * g.discount) : 0; csvContent += `${d},${g.timestamp || '--'},${g.barcode},${g.name},${g.qty < 0 ? "售出" : "進貨"},${g.price},${g.qty},${g.discount},${subtotal},${g.memberId || '--'},${g.discount !== 1.0 ? `原因:${g.discountReason} 簽名:${g.discountAuthUser}` : '無折扣'},${g.audit ? `填寫人:${g.audit.user} 理由:${g.audit.reason}` : '無異動'}\n`; }); } });
     csvContent += "\n=== 📊 每日營業加總日報 ===\n營運日期,票務總收入,總售出人次,周邊總淨營收,當日總營業額\n";
     allDates.forEach(d => { if(d >= start && d <= end && systemStorage[d]) { let dT = 0, dP = 0, dG = 0; if(systemStorage[d].tickets) systemStorage[d].tickets.forEach(x => { dT += x.amount; dP += (x.people !== undefined ? x.people : calculateTicketPeople(x.type, x.qty)); }); if(systemStorage[d].goods) systemStorage[d].goods.forEach(y => { if(y.qty < 0) dG += Math.round(y.price * Math.abs(y.qty) * y.discount); }); csvContent += `${d},${dT},${dP},${dG},${dT + dG}\n`; } });
-    csvContent += "\n=== 📦 周邊商品截止此區間總匯盤點表 ===\n國際條碼,商品品名,商品單價,初始庫存,截止累計銷售量,當前剩餘庫存,安全庫存水位,安全預警狀態\n";
-    let rangeGoodsSales = {};
-    allDates.forEach(d => { if(d <= end && systemStorage[d] && systemStorage[d].goods) { systemStorage[d].goods.forEach(item => { if(item.qty < 0) { if(!rangeGoodsSales[item.barcode]) rangeGoodsSales[item.barcode] = 0; rangeGoodsSales[item.barcode] += Math.abs(item.qty); } }); } });
-    for(let barcode in goodsDatabase) { let item = goodsDatabase[barcode]; let soldQty = rangeGoodsSales[barcode] || 0; let remain = item.initStock - soldQty; csvContent += `${barcode},${item.name},${item.price},${item.initStock},${soldQty},${remain},${item.safetyStock},${remain < item.safetyStock ? "庫存不足" : "庫存安全"}\n`; }
+    csvContent += "\n=== 📦 周邊商品截止此區間總匯盤點表 ===\n國際條碼,商品品名,商品單價,初始庫存,截止累計銷售量,截止累計補貨量,當前剩餘庫存,安全庫存水位,安全預警狀態\n";
+    let rangeGoodsSales = {}; let rangeGoodsRestock = {};
+    allDates.forEach(d => { if(d <= end && systemStorage[d] && systemStorage[d].goods) { systemStorage[d].goods.forEach(item => { if(item.qty < 0) { if(!rangeGoodsSales[item.barcode]) rangeGoodsSales[item.barcode] = 0; rangeGoodsSales[item.barcode] += Math.abs(item.qty); } else if(item.qty > 0) { if(!rangeGoodsRestock[item.barcode]) rangeGoodsRestock[item.barcode] = 0; rangeGoodsRestock[item.barcode] += item.qty; } }); } });
+    for(let barcode in goodsDatabase) { let item = goodsDatabase[barcode]; let soldQty = rangeGoodsSales[barcode] || 0; let restockQty = rangeGoodsRestock[barcode] || 0; let remain = item.initStock - soldQty + restockQty; csvContent += `${barcode},${item.name},${item.price},${item.initStock},${soldQty},${restockQty},${remain},${item.safetyStock},${remain < item.safetyStock ? "庫存不足" : "庫存安全"}\n`; }
     let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); let link = document.createElement("a"); link.href = URL.createObjectURL(blob);
     link.setAttribute("download", `VOLARE_整合營運總匯報表_${start}_至_${end}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
