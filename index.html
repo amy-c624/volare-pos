@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VOLARE 智慧雲端安全營運系統 v79</title>
+    <title>VOLARE 智慧雲端安全營運系統 v80</title>
     <style>
         :root {
             --primary-color: #2c3e50;
@@ -1212,6 +1212,10 @@ function mergeSingleDay(dateKey, cloudDayData) {
     }
     if (cloudDayData.tickets) { let filteredCloudTickets = cloudDayData.tickets.filter(cTicket => { let ts = parseInt(cTicket.id.split('_')[1]) || 0; return !(localClearedAt && ts < localClearedAt) && !localDeletedIds.includes(cTicket.id); }); mergeRecordList(systemStorage[dateKey].tickets, filteredCloudTickets); }
     if (cloudDayData.goods) { let filteredCloudGoods = cloudDayData.goods.filter(cGood => { let ts = parseInt(cGood.id.split('_')[1]) || 0; return !(localClearedAt && ts < localClearedAt) && !localDeletedIds.includes(cGood.id); }); mergeRecordList(systemStorage[dateKey].goods, filteredCloudGoods); }
+    // 🎯 v80 修正：只濾掉雲端「要新增進來」的資料還不夠——本機自己在更早之前就已經存在、後來才被別的裝置刪除的舊紀錄，
+    // 也要在這裡主動清掉，否則本機那份舊快取會一直留著，即使重新登入拉了最新的墓碑清單也不會被套用。
+    systemStorage[dateKey].tickets = systemStorage[dateKey].tickets.filter(t => !localDeletedIds.includes(t.id));
+    systemStorage[dateKey].goods = systemStorage[dateKey].goods.filter(g => !localDeletedIds.includes(g.id));
 }
 
 function smartMergeSales(cloudSales) {
@@ -1228,6 +1232,9 @@ function smartMergeSales(cloudSales) {
             }
             if (cloudSales[date].tickets) { let filteredCloudTickets = cloudSales[date].tickets.filter(cTicket => { let ts = parseInt(cTicket.id.split('_')[1]) || 0; return !(localClearedAt && ts < localClearedAt) && !localDeletedIds.includes(cTicket.id); }); mergeRecordList(systemStorage[date].tickets, filteredCloudTickets); }
             if (cloudSales[date].goods) { let filteredCloudGoods = cloudSales[date].goods.filter(cGood => { let ts = parseInt(cGood.id.split('_')[1]) || 0; return !(localClearedAt && ts < localClearedAt) && !localDeletedIds.includes(cGood.id); }); mergeRecordList(systemStorage[date].goods, filteredCloudGoods); }
+            // 🎯 v80 修正：同 mergeSingleDay，本機既有但已被別的裝置標記刪除的舊紀錄也要主動清掉
+            systemStorage[date].tickets = systemStorage[date].tickets.filter(t => !localDeletedIds.includes(t.id));
+            systemStorage[date].goods = systemStorage[date].goods.filter(g => !localDeletedIds.includes(g.id));
         }
     }
 }
