@@ -492,6 +492,7 @@
         <div class="form-group">
             <label>顧客組成</label>
             <div class="cp-option-group" data-question="composition">
+                <button type="button" class="cp-option-btn" data-value="家庭">家庭</button>
                 <button type="button" class="cp-option-btn" data-value="親子">親子</button>
                 <button type="button" class="cp-option-btn" data-value="情侶/夫妻">情侶/夫妻</button>
                 <button type="button" class="cp-option-btn" data-value="好友/團體">好友/團體</button>
@@ -499,20 +500,29 @@
                 <button type="button" class="cp-option-btn" data-value="外籍遊客">外籍遊客</button>
             </div>
         </div>
-        <div class="form-group">
-            <label>體驗目的</label>
-            <div class="cp-option-group" data-question="purpose">
-                <button type="button" class="cp-option-btn" data-value="已知Volare">已知Volare</button>
-                <button type="button" class="cp-option-btn" data-value="Walk in">Walk in</button>
+        <div class="form-group" id="childAgeGroupWrap" style="display:none;">
+            <label>孩童年齡層（可複選，家中若有不同年齡的小孩可多選）</label>
+            <div class="cp-option-group" data-question="childAgeGroups" data-multi="true">
+                <button type="button" class="cp-option-btn" data-value="6歲以下">6歲以下</button>
+                <button type="button" class="cp-option-btn" data-value="6-12歲">6-12歲</button>
+                <button type="button" class="cp-option-btn" data-value="13-17歲">13-17歲</button>
             </div>
         </div>
         <div class="form-group">
-            <label>年齡區間</label>
+            <label>體驗目的</label>
+            <div class="cp-option-group" data-question="purpose">
+                <button type="button" class="cp-option-btn" data-value="已知VOLARE">已知VOLARE</button>
+                <button type="button" class="cp-option-btn" data-value="Walkin">Walkin</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>購票者目測年齡</label>
             <div class="cp-option-group" data-question="ageRange">
-                <button type="button" class="cp-option-btn" data-value="20以下">20以下</button>
-                <button type="button" class="cp-option-btn" data-value="21-35">21-35</button>
-                <button type="button" class="cp-option-btn" data-value="36-50">36-50</button>
-                <button type="button" class="cp-option-btn" data-value="51以上">51以上</button>
+                <button type="button" class="cp-option-btn" data-value="18歲以下">18歲以下</button>
+                <button type="button" class="cp-option-btn" data-value="19-30歲">19-30歲</button>
+                <button type="button" class="cp-option-btn" data-value="31-45歲">31-45歲</button>
+                <button type="button" class="cp-option-btn" data-value="46-64歲">46-64歲</button>
+                <button type="button" class="cp-option-btn" data-value="65歲以上">65歲以上</button>
             </div>
         </div>
         <div class="modal-footer" style="margin-top: 20px; display: flex; gap: 10px;">
@@ -1080,7 +1090,8 @@ function pushToCloud(dateOverride) {
         vendorDatabase: JSON.parse(JSON.stringify(vendorDatabase)),
         staffDatabase: JSON.parse(JSON.stringify(staffDatabase)),
         historyEditAuthorizedStaff: JSON.parse(JSON.stringify(historyEditAuthorizedStaff)),
-        currentPriceMode: currentPriceMode
+        currentPriceMode: currentPriceMode,
+        programList: JSON.parse(JSON.stringify(programList)) // 🎯 v77 修正：補上節目清單快照，避免推送前被雲端舊資料覆蓋
     };
 
     return fetch(CLOUD_DB_URL).then(res => res.json()).then(resData => {
@@ -1107,6 +1118,8 @@ function restoreLocalSnapshotValues(snapshot) {
     for (let key in snapshot.staffDatabase) { staffDatabase[key] = snapshot.staffDatabase[key]; }
     for (let key in snapshot.historyEditAuthorizedStaff) { historyEditAuthorizedStaff[key] = snapshot.historyEditAuthorizedStaff[key]; }
     if (snapshot.currentPriceMode) { currentPriceMode = snapshot.currentPriceMode; renderPriceModeButtons(); }
+    // 🎯 v77 修正：節目清單以本機剛做的異動（新增/修改/刪除/排序）為準，強制覆蓋掉合併階段被雲端舊資料蓋過去的版本
+    if (snapshot.programList) { programList = snapshot.programList; }
 }
 
 function sendPushPayload(activeDate, syncTimeout) {
@@ -1479,12 +1492,13 @@ function triggerOverloadWarning(date, program, time, type, qty, price, calculate
 
 // 🎯 顧客樣態紀錄彈窗：票券確認後、正式寫入紀錄前彈出，收集三題單選資料一併存入這筆紀錄
 let pendingTicketCommit = null;
-let customerProfileSelections = { composition: null, purpose: null, ageRange: null };
+let customerProfileSelections = { composition: null, purpose: null, ageRange: null, childAgeGroups: [] };
 
 function openCustomerProfileModal(date, program, time, type, qty, price, mid) {
     pendingTicketCommit = { date, program, time, type, qty, price, mid };
-    customerProfileSelections = { composition: null, purpose: null, ageRange: null };
+    customerProfileSelections = { composition: null, purpose: null, ageRange: null, childAgeGroups: [] };
     document.querySelectorAll('#customerProfileModal .cp-option-btn').forEach(btn => btn.classList.remove('selected'));
+    document.getElementById('childAgeGroupWrap').style.display = 'none'; // 🎯 每次開窗預設隱藏孩童年齡層子問題，選了「親子」才會顯示
     document.getElementById('customerProfileModal').style.display = 'block';
 }
 
@@ -2041,8 +2055,33 @@ function exportRangeData() {
     let allDates = Object.keys(systemStorage).sort();
     allDates.forEach(d => { if(d >= start && d <= end && systemStorage[d] && systemStorage[d].tickets) { systemStorage[d].tickets.forEach(x => { csvContent += `${d},${x.timestamp || '--'},${x.program},${x.time},${x.type},${x.price},${x.qty},${x.amount},${x.people !== undefined ? x.people : calculateTicketPeople(x.type, x.qty)},${x.memberId || '--'},${x.audit ? `填寫人:${x.audit.user} 原因:${x.audit.reason}` : '無異動'}\n`; }); } });
     // 🎯 顧客樣態紀錄獨立成表，欄位拆開方便 Excel 篩選與樞紐分析（只列出有填寫過問卷的票券，略過的不會出現在此表）
-    csvContent += "\n=== 📋 顧客樣態紀錄明細 ===\n營業日期,輸入時間,影片節目,場次時間,票券種類,張數,顧客組成,體驗目的,年齡區間\n";
-    allDates.forEach(d => { if(d >= start && d <= end && systemStorage[d] && systemStorage[d].tickets) { systemStorage[d].tickets.forEach(x => { if (x.customerProfile) { csvContent += `${d},${x.timestamp || '--'},${x.program},${x.time},${x.type},${x.qty},${x.customerProfile.composition || ''},${x.customerProfile.purpose || ''},${x.customerProfile.ageRange || ''}\n`; } }); } });
+    csvContent += "\n=== 📋 顧客樣態紀錄明細 ===\n營業日期,輸入時間,影片節目,場次時間,票券種類,張數,顧客組成,孩童年齡層,體驗目的,購票者目測年齡\n";
+    allDates.forEach(d => { if(d >= start && d <= end && systemStorage[d] && systemStorage[d].tickets) { systemStorage[d].tickets.forEach(x => { if (x.customerProfile) { let childAges = (x.customerProfile.childAgeGroups && x.customerProfile.childAgeGroups.length > 0) ? x.customerProfile.childAgeGroups.join('、') : ''; csvContent += `${d},${x.timestamp || '--'},${x.program},${x.time},${x.type},${x.qty},${x.customerProfile.composition || ''},${childAges},${x.customerProfile.purpose || ''},${x.customerProfile.ageRange || ''}\n`; } }); } });
+
+    // 🎯 顧客組成智慧分析報表：一次算完三塊你要的分析（佔比與消費關聯／親子孩童年齡分布／平日假日組成差異）
+    let profileRecords = [];
+    allDates.forEach(d => { if(d >= start && d <= end && systemStorage[d] && systemStorage[d].tickets) { systemStorage[d].tickets.forEach(x => { if (x.customerProfile && x.customerProfile.composition) { profileRecords.push({ date: d, x: x }); } }); } });
+
+    csvContent += "\n=== 📊 顧客組成分析：佔比與消費金額關聯 ===\n顧客組成,填答筆數,佔填答總數比例,銷售張數合計,消費金額合計,平均單筆消費\n";
+    let compStats = {};
+    profileRecords.forEach(r => { let c = r.x.customerProfile.composition; if(!compStats[c]) compStats[c] = { count: 0, qty: 0, amount: 0 }; compStats[c].count++; compStats[c].qty += r.x.qty; compStats[c].amount += r.x.amount; });
+    let totalProfileCount = profileRecords.length;
+    Object.keys(compStats).forEach(c => { let s = compStats[c]; let ratio = totalProfileCount > 0 ? (s.count / totalProfileCount * 100).toFixed(1) + '%' : '0%'; let avg = s.count > 0 ? Math.round(s.amount / s.count) : 0; csvContent += `${c},${s.count},${ratio},${s.qty},${s.amount},${avg}\n`; });
+
+    csvContent += "\n=== 📊 親子客群：孩童年齡層分布（規劃內容/票種參考，同一組可複選多個年齡層） ===\n年齡層,出現次數,佔親子組總筆數比例\n";
+    let familyRecords = profileRecords.filter(r => r.x.customerProfile.composition === '親子');
+    let childAgeStats = { "6歲以下": 0, "6-12歲": 0, "13-17歲": 0 };
+    familyRecords.forEach(r => { let ages = r.x.customerProfile.childAgeGroups || []; ages.forEach(a => { if(childAgeStats[a] === undefined) childAgeStats[a] = 0; childAgeStats[a]++; }); });
+    let familyTotal = familyRecords.length;
+    Object.keys(childAgeStats).forEach(a => { let cnt = childAgeStats[a]; let ratio = familyTotal > 0 ? (cnt / familyTotal * 100).toFixed(1) + '%' : '0%'; csvContent += `${a},${cnt},${ratio}\n`; });
+
+    csvContent += "\n=== 📊 平日／週末 顧客組成差異（依日期星期判斷，六、日視為週末，非官方國定假日判斷） ===\n顧客組成,平日筆數,平日佔比,週末筆數,週末佔比\n";
+    let weekdayStats = {}, weekendStats = {};
+    profileRecords.forEach(r => { let dow = new Date(r.date + 'T00:00:00').getDay(); let isWeekend = (dow === 0 || dow === 6); let c = r.x.customerProfile.composition; let target = isWeekend ? weekendStats : weekdayStats; target[c] = (target[c] || 0) + 1; });
+    let weekdayTotal = Object.values(weekdayStats).reduce((a, b) => a + b, 0);
+    let weekendTotal = Object.values(weekendStats).reduce((a, b) => a + b, 0);
+    let allComps = new Set([...Object.keys(weekdayStats), ...Object.keys(weekendStats)]);
+    allComps.forEach(c => { let wd = weekdayStats[c] || 0; let we = weekendStats[c] || 0; let wdRatio = weekdayTotal > 0 ? (wd / weekdayTotal * 100).toFixed(1) + '%' : '0%'; let weRatio = weekendTotal > 0 ? (we / weekendTotal * 100).toFixed(1) + '%' : '0%'; csvContent += `${c},${wd},${wdRatio},${we},${weRatio}\n`; });
     csvContent += "\n=== 🛍️ 周邊商品銷售流水變動明細 ===\n營業日期,輸入時間,國際條碼,商品品名,變動類型,固定單價,變動數量,使用折扣,實收總價,會員編號/廠商代碼,特殊折扣說明與填寫人,內部審計改單簽核\n";
     allDates.forEach(d => { if(d >= start && d <= end && systemStorage[d] && systemStorage[d].goods) { systemStorage[d].goods.forEach(g => { let subtotal = g.qty < 0 ? Math.round(g.price * Math.abs(g.qty) * g.discount) : 0; csvContent += `${d},${g.timestamp || '--'},${g.barcode},${g.name},${g.qty < 0 ? "售出" : "進貨"},${g.price},${g.qty},${g.discount},${subtotal},${g.memberId || '--'},${g.discount !== 1.0 ? `原因:${g.discountReason} 簽名:${g.discountAuthUser}` : '無折扣'},${g.audit ? `填寫人:${g.audit.user} 理由:${g.audit.reason}` : '無異動'}\n`; }); } });
     csvContent += "\n=== 📊 每日營業加總日報 ===\n營運日期,票務總收入,總售出人次,周邊總淨營收,當日總營業額\n";
@@ -2055,14 +2094,34 @@ function exportRangeData() {
     link.setAttribute("download", `VOLARE_整合營運總匯報表_${start}_至_${end}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 
-// 🎯 顧客樣態彈窗單選按鈕：點擊後該題目組內僅保留一個選中狀態
+// 🎯 顧客樣態彈窗按鈕：一般題目單選；標記 data-multi="true" 的題目（目前為孩童年齡層）可複選
 document.addEventListener('click', function(e) {
     if (!e.target.classList.contains('cp-option-btn')) return;
     let group = e.target.closest('.cp-option-group');
     let question = group.getAttribute('data-question');
+    let val = e.target.getAttribute('data-value');
+    if (group.getAttribute('data-multi') === 'true') {
+        e.target.classList.toggle('selected');
+        if (!Array.isArray(customerProfileSelections[question])) customerProfileSelections[question] = [];
+        let idx = customerProfileSelections[question].indexOf(val);
+        if (e.target.classList.contains('selected')) { if (idx === -1) customerProfileSelections[question].push(val); }
+        else { if (idx !== -1) customerProfileSelections[question].splice(idx, 1); }
+        return;
+    }
     group.querySelectorAll('.cp-option-btn').forEach(btn => btn.classList.remove('selected'));
     e.target.classList.add('selected');
-    customerProfileSelections[question] = e.target.getAttribute('data-value');
+    customerProfileSelections[question] = val;
+    // 🎯 選「親子」才顯示孩童年齡層子問題；切換成其他組成則隱藏並清空已選的年齡層，避免殘留不相關資料
+    if (question === 'composition') {
+        let childWrap = document.getElementById('childAgeGroupWrap');
+        if (val === '親子') {
+            childWrap.style.display = 'block';
+        } else {
+            childWrap.style.display = 'none';
+            childWrap.querySelectorAll('.cp-option-btn').forEach(btn => btn.classList.remove('selected'));
+            customerProfileSelections.childAgeGroups = [];
+        }
+    }
 });
 
 document.addEventListener('keypress', function(e) {
